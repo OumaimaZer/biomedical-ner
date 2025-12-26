@@ -18,3 +18,5 @@ final_biomedical_ner_model/*.txt
 final_biomedical_ner_model/final_biomedical_ner_model.pth
 
 embeddings/
+
+word2Vecembeddings/*

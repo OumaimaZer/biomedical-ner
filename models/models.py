@@ -88,10 +88,11 @@ class TokenAttention(nn.Module):
     def forward(self, H, mask):
         # H: [B, T, H]
         scores = self.v(torch.tanh(self.W(H))).squeeze(-1)  # [B, T]
-        scores = scores.masked_fill(~mask, -1e9)
+        alpha = torch.softmax(scores, dim=1).unsqueeze(-1)  # [B, T, 1]
+        
+        context = torch.sum(alpha * H, dim=1)  # [B, H]
+        return context.unsqueeze(1).repeat(1, H.size(1), 1)
 
-        alpha = torch.softmax(scores, dim=1).unsqueeze(-1) # [B, T, 1]
-        return H * alpha
 
 class CombinatorialNER(nn.Module):
     def __init__(
