@@ -65,23 +65,20 @@ class ManhattanAttention(nn.Module):
 # ==================== CombinatorialNER ====================
 class CombinatorialNER(nn.Module):
     def __init__(self, vocab_size: int, char_vocab_size: int, tag_to_idx: Dict[str,int],
-                 dataset: str = "JNLPBA", use_char_cnn=True, use_char_lstm=True,
-                 use_attention=True, use_fc_fusion=True, pretrained_embeddings: Optional[np.ndarray] = None,
-                 word_embed_dim: int = 200, lstm_hidden_dim: int = 256, dropout: float = 0.5):
+                 dataset: str = "JNLPBA",
+                 use_char_cnn=True, use_char_lstm=True,
+                 use_attention=True, use_fc_fusion=True,
+                 pretrained_embeddings: Optional[np.ndarray] = None,
+                 word_embed_dim: int = 200, lstm_hidden_dim: int = 256,
+                 dropout: float = 0.5, use_lstm=True):
         super().__init__()
 
-        # Kernel sizes by dataset
-        if dataset == "JNLPBA":
-            cnn_kernels = [3,5,7]
-        elif dataset == "NCBI":
-            cnn_kernels = [2,3,4]
-        else:
-            cnn_kernels = [3,5,7]
-
+        self.dataset = dataset
         self.use_char_cnn = use_char_cnn
         self.use_char_lstm = use_char_lstm
         self.use_attention = use_attention
         self.use_fc_fusion = use_fc_fusion
+        self.use_lstm = use_lstm
 
         # Word embeddings
         if pretrained_embeddings is not None:
@@ -93,6 +90,7 @@ class CombinatorialNER(nn.Module):
 
         # Char encoders
         if self.use_char_cnn:
+            cnn_kernels = [3,5,7] if dataset=="JNLPBA" else [2,3,4]
             self.char_cnn = CharCNN(char_vocab_size, char_embed_dim=50,
                                     num_filters=32, kernel_sizes=cnn_kernels, dropout=dropout)
         if self.use_char_lstm:
@@ -101,57 +99,68 @@ class CombinatorialNER(nn.Module):
         # Combined dimension
         char_dim = 0
         if self.use_char_cnn:
-            char_dim += 32*len(cnn_kernels)
+            char_dim += 32 * (len(cnn_kernels))
         if self.use_char_lstm:
             char_dim += 100  # 50*2
 
         combined_dim = word_embed_dim + char_dim
 
         # FC fusion
-        # ==================== FC fusion ====================
         if self.use_fc_fusion:
-            if dataset == "NCBI":
+            if dataset=="NCBI":
                 self.fusion = nn.Sequential(
                     nn.Linear(combined_dim, 200),
-                    nn.ReLU(),              # ReLU only for NCBI
+                    nn.ReLU(),
                     nn.Dropout(dropout)
                 )
-            else:  # JNLPBA or others
+            else:
                 self.fusion = nn.Sequential(
                     nn.Linear(combined_dim, 200),
-                    nn.Dropout(dropout)     # no activation
+                    nn.Dropout(dropout)
                 )
             lstm_input_dim = 200
         else:
             lstm_input_dim = combined_dim
 
-
-        # Context BiLSTM
-        self.context_lstm = nn.LSTM(lstm_input_dim, lstm_hidden_dim//2, batch_first=True, bidirectional=True)
-        if self.use_attention:
-            self.attention_layer = ManhattanAttention(lstm_hidden_dim)
+        # Context BiLSTM optionnel
+        if self.use_lstm and (self.use_char_cnn or self.use_char_lstm or self.use_attention or self.use_fc_fusion):
+            self.context_lstm = nn.LSTM(lstm_input_dim, lstm_hidden_dim//2, batch_first=True, bidirectional=True)
+            if self.use_attention:
+                self.attention_layer = ManhattanAttention(lstm_hidden_dim)
+            lstm_output_dim = lstm_hidden_dim
+        else:
+            self.context_lstm = None
+            self.attention_layer = None
+            lstm_output_dim = lstm_input_dim
 
         # Emission & CRF
-        self.emission = nn.Linear(lstm_hidden_dim, len(tag_to_idx))
+        self.emission = nn.Linear(lstm_output_dim, len(tag_to_idx))
         self.crf = CRF(len(tag_to_idx))
 
-    def forward(self, word_ids, char_ids, mask, tags=None):
+    def forward(self, word_ids, char_ids=None, mask=None, tags=None):
         word_emb = self.word_embedding(word_ids)
         char_embs = []
-        if self.use_char_cnn:
+        if self.use_char_cnn and char_ids is not None:
             char_embs.append(self.char_cnn(char_ids))
-        if self.use_char_lstm:
+        if self.use_char_lstm and char_ids is not None:
             char_embs.append(self.char_lstm(char_ids))
-        combined = torch.cat([word_emb] + char_embs, dim=-1)
+        combined = torch.cat([word_emb] + char_embs, dim=-1) if char_embs else word_emb
+
         if self.use_fc_fusion:
             combined = self.fusion(combined)
-        lstm_out, _ = self.context_lstm(combined)
-        if self.use_attention:
-            lstm_out = self.attention_layer(lstm_out, mask)
+
+        if self.context_lstm is not None:
+            lstm_out, _ = self.context_lstm(combined)
+            if self.attention_layer is not None and mask is not None:
+                lstm_out = self.attention_layer(lstm_out, mask)
+        else:
+            lstm_out = combined
+
         emissions = self.emission(lstm_out).transpose(0,1)
-        mask = mask.transpose(0,1)
+        mask_t = mask.transpose(0,1) if mask is not None else None
+
         if tags is not None:
             tags = tags.transpose(0,1)
-            return -self.crf(emissions, tags, mask=mask).mean()
+            return -self.crf(emissions, tags, mask=mask_t).mean()
         else:
-            return self.crf.decode(emissions, mask=mask)
+            return self.crf.decode(emissions, mask=mask_t)
