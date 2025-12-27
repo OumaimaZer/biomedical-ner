@@ -180,20 +180,6 @@ def prepare_ncbi_for_ner(ncbi_data):
             # Format JNLPBA : Tuple de deux listes
             sentences.append((tokens, labels))
             char_offset += len(sent) + 1
-
-    print(f"Total de phrases générées (format JNLPBA): {len(sentences)}")
-    
-    # Vérification du format
-    if sentences:
-        print("\nVérification du format:")
-        print(f"Type du premier élément: {type(sentences[0])}")
-        print(f"Longueur du tuple: {len(sentences[0])}")
-        
-        tokens, labels = sentences[0]
-        print(f"Type tokens: {type(tokens)} (longueur: {len(tokens)})")
-        print(f"Type labels: {type(labels)} (longueur: {len(labels)})")
-        print(f"Exemple tokens[:5]: {tokens[:5]}")
-        print(f"Exemple labels[:5]: {labels[:5]}")
     
     return sentences
 

@@ -20,3 +20,6 @@ final_biomedical_ner_model/final_biomedical_ner_model.pth
 embeddings/
 
 word2Vecembeddings/*
+
+notebook.pdf
+notebook.html
