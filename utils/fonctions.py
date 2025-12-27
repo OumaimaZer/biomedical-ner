@@ -3,6 +3,8 @@ import re
 import nltk
 from nltk.tokenize import sent_tokenize, word_tokenize
 from gensim.models import Word2Vec
+import matplotlib.pyplot as plt
+from collections import Counter
 import numpy as np
 import os
 
@@ -294,3 +296,268 @@ def create_embedding_matrix_from_word2vec(word2vec_model, vocab, vector_size=200
     print(f"Couverture: {words_found/(words_found+words_not_found)*100:.2f}%")
     
     return embedding_matrix
+
+def visualize_dataset_distribution(results, dataset_name="Dataset"):
+    """
+    Affiche des statistiques détaillées sur le dataset
+    
+    Args:
+        results: Dictionnaire retourné par create_jnlpba_dataloaders
+        dataset_name: Nom du dataset pour le titre des graphiques
+    """
+    
+    # Configuration des couleurs
+    colors = {'train': 'skyblue', 'dev': 'orange', 'test': 'green'}
+    
+    # 1. Informations de base
+    print("=" * 60)
+    print(f"ANALYSE DU DATASET: {dataset_name}")
+    print("=" * 60)
+    
+    # Vérifier que les clés existent
+    splits = []
+    for split in ['train', 'dev', 'test']:
+        if f'{split}_sentences' in results:
+            splits.append(split)
+    
+    if not splits:
+        print("ERREUR: Aucune donnée trouvée dans 'results'")
+        return
+    
+    # 2. Statistiques par split
+    print("\n1. RÉPARTITION DES DONNÉES")
+    print("-" * 40)
+    
+    stats = {}
+    for split in splits:
+        sentences = results[f'{split}_sentences']
+        num_sentences = len(sentences)
+        num_tokens = sum(len(sent) for sent in sentences)
+        num_entities = sum(1 for sent in sentences for _, tag in sent if tag != 'O')
+        
+        stats[split] = {
+            'sentences': num_sentences,
+            'tokens': num_tokens,
+            'entities': num_entities
+        }
+        
+        print(f"\n{split.upper()}:")
+        print(f"  Phrases: {num_sentences:,}")
+        print(f"  Tokens: {num_tokens:,}")
+        print(f"  Entités nommées: {num_entities:,}")
+        if num_tokens > 0:
+            print(f"  Densité d'entités: {num_entities/num_tokens*100:.1f}%")
+    
+    # 3. Longueur des phrases
+    print("\n2. LONGUEUR DES PHRASES")
+    print("-" * 40)
+    
+    fig, axes = plt.subplots(1, len(splits), figsize=(15, 4))
+    if len(splits) == 1:
+        axes = [axes]
+    
+    for idx, split in enumerate(splits):
+        sentences = results[f'{split}_sentences']
+        lengths = [len(sent) for sent in sentences]
+        
+        # Calculer des statistiques
+        mean_len = np.mean(lengths)
+        median_len = np.median(lengths)
+        max_len = np.max(lengths)
+        min_len = np.min(lengths)
+        
+        print(f"\n{split.upper()}:")
+        print(f"  Moyenne: {mean_len:.1f} tokens")
+        print(f"  Médiane: {median_len:.1f} tokens")
+        print(f"  Min-Max: {min_len}-{max_len} tokens")
+        print(f"  >100 tokens: {sum(1 for l in lengths if l > 100):,}")
+        
+        # Histogramme
+        ax = axes[idx]
+        ax.hist(lengths, bins=30, color=colors[split], edgecolor='black', alpha=0.7)
+        ax.axvline(mean_len, color='red', linestyle='--', label=f'Moyenne: {mean_len:.1f}')
+        ax.axvline(median_len, color='green', linestyle='--', label=f'Médiane: {median_len:.1f}')
+        ax.set_xlabel('Nombre de tokens')
+        ax.set_ylabel('Nombre de phrases')
+        ax.set_title(f'Longueur des phrases - {split}')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+    
+    plt.suptitle(f'Distribution des longueurs - {dataset_name}', fontsize=14)
+    plt.tight_layout()
+    plt.show()
+    
+    # 4. Distribution des classes
+    print("\n3. DISTRIBUTION DES CLASSES D'ENTITÉS")
+    print("-" * 40)
+    
+    # Collecter toutes les classes
+    all_classes = set()
+    class_distributions = {}
+    
+    for split in splits:
+        sentences = results[f'{split}_sentences']
+        labels = [tag for sent in sentences for _, tag in sent]
+        counter = Counter(labels)
+        class_distributions[split] = counter
+        all_classes.update(counter.keys())
+    
+    # Trier les classes (sauf 'O' qu'on met à part)
+    sorted_classes = sorted([c for c in all_classes if c != 'O'])
+    if 'O' in all_classes:
+        sorted_classes = ['O'] + sorted_classes
+    
+    # Afficher le tableau des fréquences
+    print("\nFréquences absolues:")
+    header = f"{'Classe':<20} " + " ".join([f"{s.upper():>10}" for s in splits])
+    print(header)
+    print("-" * (20 + 11 * len(splits)))
+    
+    for cls in sorted_classes:
+        row = f"{cls:<20}"
+        for split in splits:
+            count = class_distributions[split].get(cls, 0)
+            row += f" {count:>10,}"
+        print(row)
+    
+    print("\nPourcentages (par split):")
+    header = f"{'Classe':<20} " + " ".join([f"{s.upper():>10}" for s in splits])
+    print(header)
+    print("-" * (20 + 11 * len(splits)))
+    
+    for cls in sorted_classes:
+        row = f"{cls:<20}"
+        for split in splits:
+            total = sum(class_distributions[split].values())
+            count = class_distributions[split].get(cls, 0)
+            percentage = (count / total * 100) if total > 0 else 0
+            row += f" {percentage:>9.1f}%"
+        print(row)
+    
+    # 5. Graphique des classes (sans 'O' pour plus de lisibilité)
+    print("\n4. VISUALISATION DES ENTITÉS (sans 'O')")
+    
+    entity_classes = [c for c in sorted_classes if c != 'O']
+    if entity_classes:
+        fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+        
+        # Bar plot groupé
+        x = np.arange(len(entity_classes))
+        width = 0.25
+        
+        for i, split in enumerate(splits):
+            counts = [class_distributions[split].get(cls, 0) for cls in entity_classes]
+            axes[0].bar(x + i*width, counts, width=width, 
+                       color=colors[split], label=split, edgecolor='black')
+        
+        axes[0].set_xlabel('Classes d\'entités')
+        axes[0].set_ylabel('Nombre d\'occurrences')
+        axes[0].set_title(f'Distribution des entités par split - {dataset_name}')
+        axes[0].set_xticks(x + width*(len(splits)-1)/2)
+        axes[0].set_xticklabels(entity_classes, rotation=45, ha='right')
+        axes[0].legend()
+        axes[0].grid(True, alpha=0.3, axis='y')
+        
+        # Pie chart pour l'ensemble train
+        if 'train' in splits:
+            train_counts = [class_distributions['train'].get(cls, 0) for cls in entity_classes]
+            # Filtrer les classes avec 0 occurrence
+            nonzero_data = [(cls, count) for cls, count in zip(entity_classes, train_counts) if count > 0]
+            if nonzero_data:
+                entity_classes_filtered, train_counts_filtered = zip(*nonzero_data)
+                axes[1].pie(train_counts_filtered, labels=entity_classes_filtered,
+                           autopct='%1.1f%%', startangle=90)
+                axes[1].set_title(f'Distribution des entités - Train split')
+            else:
+                axes[1].text(0.5, 0.5, 'Aucune entité trouvée\n dans le split train',
+                           ha='center', va='center', transform=axes[1].transAxes)
+        
+        plt.tight_layout()
+        plt.show()
+    
+    # 6. Analyse des entités par phrase
+    print("\n5. ENTITÉS PAR PHRASE")
+    print("-" * 40)
+    
+    fig, axes = plt.subplots(1, len(splits), figsize=(15, 4))
+    if len(splits) == 1:
+        axes = [axes]
+    
+    for idx, split in enumerate(splits):
+        sentences = results[f'{split}_sentences']
+        entities_per_sentence = []
+        
+        for sent in sentences:
+            # Compter les entités (tout ce qui n'est pas 'O')
+            entities = sum(1 for _, tag in sent if tag != 'O')
+            entities_per_sentence.append(entities)
+        
+        # Statistiques
+        mean_ent = np.mean(entities_per_sentence)
+        median_ent = np.median(entities_per_sentence)
+        sentences_without_entities = sum(1 for e in entities_per_sentence if e == 0)
+        
+        print(f"\n{split.upper()}:")
+        print(f"  Entités/phrase (moyenne): {mean_ent:.2f}")
+        print(f"  Entités/phrase (médiane): {median_ent:.1f}")
+        print(f"  Phrases sans entité: {sentences_without_entities:,} ({sentences_without_entities/len(sentences)*100:.1f}%)")
+        
+        # Histogramme
+        ax = axes[idx]
+        ax.hist(entities_per_sentence, bins=20, color=colors[split], 
+                edgecolor='black', alpha=0.7)
+        ax.set_xlabel('Nombre d\'entités')
+        ax.set_ylabel('Nombre de phrases')
+        ax.set_title(f'Entités par phrase - {split}')
+        ax.grid(True, alpha=0.3)
+    
+    plt.suptitle(f'Distribution des entités par phrase - {dataset_name}', fontsize=14)
+    plt.tight_layout()
+    plt.show()
+    
+    # 7. Résumé des tags BIO
+    print("\n6. ANALYSE DES TAGS BIO")
+    print("-" * 40)
+    
+    bio_stats = {'B': 0, 'I': 0, 'O': 0, 'autres': 0}
+    
+    for split in splits:
+        sentences = results[f'{split}_sentences']
+        for sent in sentences:
+            for _, tag in sent:
+                if tag == 'O':
+                    bio_stats['O'] += 1
+                elif tag.startswith('B-'):
+                    bio_stats['B'] += 1
+                elif tag.startswith('I-'):
+                    bio_stats['I'] += 1
+                else:
+                    bio_stats['autres'] += 1
+    
+    total_tags = sum(bio_stats.values())
+    print(f"Total des tags: {total_tags:,}")
+    for bio_type, count in bio_stats.items():
+        percentage = (count / total_tags * 100) if total_tags > 0 else 0
+        print(f"  {bio_type}: {count:,} ({percentage:.1f}%)")
+    
+    # 8. Informations supplémentaires
+    print("\n7. INFORMATIONS SUPPLÉMENTAIRES")
+    print("-" * 40)
+    
+    # Vocabulaire
+    if 'vocab' in results:
+        vocab_size = len(results['vocab'])
+        print(f"Taille du vocabulaire: {vocab_size:,} mots")
+    
+    if 'char_vocab' in results:
+        char_vocab_size = len(results['char_vocab'])
+        print(f"Taille du vocabulaire caractères: {char_vocab_size:,}")
+    
+    if 'tag_to_idx' in results:
+        tag_count = len(results['tag_to_idx'])
+        print(f"Nombre de classes uniques: {tag_count}")
+        print(f"Classes: {list(results['tag_to_idx'].keys())}")
+    
+    print("\n" + "=" * 60)
+    print("ANALYSE TERMINÉE")
+    print("=" * 60)
