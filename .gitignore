@@ -11,11 +11,16 @@ wheels/
 .venv/
 .ipynb_checkpoints/
 
-checkpoints/
-checkpoints/best_model_crf.pth
-final_biomedical_ner_model/*.json
-final_biomedical_ner_model/*.txt
-final_biomedical_ner_model/final_biomedical_ner_model.pth
+# Ignorer tout le dossier checkpoints
+checkpoints/**
+
+# Réautoriser l'arborescence nécessaire
+!checkpoints/
+!checkpoints/JNLPBA/
+!checkpoints/JNLPBA/WE_char_bilstm_cnn_attention/
+
+# Réautoriser uniquement le modèle final
+!checkpoints/JNLPBA/WE_char_bilstm_cnn_attention/best_model.pt
 
 embeddings/
 
