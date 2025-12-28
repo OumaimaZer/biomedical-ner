@@ -124,14 +124,25 @@ class CombinatorialNER(nn.Module):
 
         # Context BiLSTM optionnel
         if self.use_lstm and (self.use_char_cnn or self.use_char_lstm or self.use_attention or self.use_fc_fusion):
-            self.context_lstm = nn.LSTM(lstm_input_dim, lstm_hidden_dim//2, batch_first=True, bidirectional=True)
+            self.context_lstm = nn.LSTM(
+                lstm_input_dim,
+                lstm_hidden_dim // 2,
+                batch_first=True,
+                bidirectional=True
+            )
+
             if self.use_attention:
                 self.attention_layer = ManhattanAttention(lstm_hidden_dim)
-            lstm_output_dim = lstm_hidden_dim
+                lstm_output_dim = lstm_hidden_dim * 2  
+            else:
+                self.attention_layer = None
+                lstm_output_dim = lstm_hidden_dim
         else:
             self.context_lstm = None
             self.attention_layer = None
             lstm_output_dim = lstm_input_dim
+
+
 
         # Emission & CRF
         self.emission = nn.Linear(lstm_output_dim, len(tag_to_idx))
