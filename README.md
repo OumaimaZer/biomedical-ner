@@ -39,7 +39,7 @@ An interactive web application for biomedical named entity recognition using dee
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/your-username/bioner.git
+git clone git@github.com:ourahma/biomedical-ner.git
 cd bioner
 ```
 
