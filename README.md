@@ -92,10 +92,22 @@ bioner/
 
 ### 1. Biomedical NER Page (JNLPBA)
 
+#### Sreamlit app :
+
+- Biomedical entities detection : 
+
+![](pics/1.png)
+
+- Detection made by the model 
+
+![](pics/2.png)
+
+
 **To analyze general biomedical text:**
 ```python
 # Example text:
 "Mutations in the TP53 gene are frequently observed in human cancers."
+
 ```
 
 **Detected entities:**
@@ -103,6 +115,14 @@ bioner/
 - `gene` → Protein (I-protein)
 
 ### 2. Disease NER Page (NCBI)
+
+- Diesease dections :
+
+![](pics/3.png)
+
+- Detection made by the model 
+
+![](pics/4.png)
 
 **To analyze diseases:**
 ```python
